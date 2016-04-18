@@ -1,136 +1,120 @@
+const optionsSchema = new SimpleSchema({
+    adaptive:{
+        type:String,
+        optional:true,
+        defaultValue:true
+    },
+    capacity: {
+        type: Number,
+        decimal:true,
+        optional: true,
+        defaultValue: 0.9,
+        min:0,
+        max:1,
+    },
+    chunkSize:{
+        type:Number,
+        defaultValue:8 * 1024,
+    },
+    data: {
+        type: ArrayBuffer
+    },
+    file:{
+        type: Object,
+        optional:true
+    },
+    maxChunkSize:{
+        type:Number,
+        optional:true,
+        defaultValue:0
+    },
+    maxTries:{
+        type:Number,
+        optional:true,
+        defaultValue:5
+    },
+    onAbort:{
+        type:Function,
+        optional:true
+    },
+    onComplete:{
+        type:Function,
+        optional:true
+    },
+    onCreate:{
+        type:Function,
+        optional:true
+    },
+    onError:{
+        type:Function,
+        optional:true
+    },
+    onProgress:{
+        type:Function,
+        optional:true
+    },
+    onStart:{
+        type:Function,
+        optional:true
+    },
+    onStop:{
+        type:Function,
+        optional:true
+    },
+    store:{
+        type:String
+    }
+});
+
 /**
  * File uploader
  * @param options
  * @constructor
  */
-UploadFS.Uploader = function (options) {
-    var self = this;
+class Uploader{
+    constructor(options){
+        optionsSchema.clean(options);
+        check(options,optionsSchema);
+        
+        Object.assign(this,options);
 
-    // Set default options
-    options = _.extend({
-        adaptive: true,
-        capacity: 0.9,
-        chunkSize: 8 * 1024,
-        data: null,
-        file: null,
-        maxChunkSize: 0,
-        maxTries: 5,
-        onAbort: UploadFS.Uploader.prototype.onAbort,
-        onComplete: UploadFS.Uploader.prototype.onComplete,
-        onCreate: UploadFS.Uploader.prototype.onCreate,
-        onError: UploadFS.Uploader.prototype.onError,
-        onProgress: UploadFS.Uploader.prototype.onProgress,
-        onStart: UploadFS.Uploader.prototype.onStart,
-        onStop: UploadFS.Uploader.prototype.onStop,
-        store: null
-    }, options);
+        // Private attributes
+        this._store = options.store;
+        this._data = options.data;
+        this._capacityMargin = 10; //%
+        this._file = options.file;
+        this._fileId = null;
+        this._offset = 0;
+        this._total = options.data.byteLength;
+        this._tries = 0;
 
-    // Check instance
-    if (!(self instanceof UploadFS.Uploader)) {
-        throw new Error('UploadFS.Uploader is not an instance');
-    }
+        this._complete = new ReactiveVar(false);
+        this._loaded = new ReactiveVar(0);
+        this._uploading = new ReactiveVar(false);
 
-    // Check options
-    if (typeof options.adaptive !== 'boolean') {
-        throw new TypeError('adaptive is not a number');
+        this.timeA = null;
+        this.timeB = null;
+        
+        file.store = this._store;
     }
-    if (typeof options.capacity !== 'number') {
-        throw new TypeError('capacity is not a number');
-    }
-    if (options.capacity <= 0 || options.capacity > 1) {
-        throw new RangeError('capacity must be a float between 0.1 and 1.0');
-    }
-    if (typeof options.chunkSize !== 'number') {
-        throw new TypeError('chunkSize is not a number');
-    }
-    if (!(options.data instanceof ArrayBuffer)) {
-        throw new TypeError('data is not an ArrayBuffer');
-    }
-    if (options.file === null || typeof options.file !== 'object') {
-        throw new TypeError('file is not an object');
-    }
-    if (typeof options.maxChunkSize !== 'number') {
-        throw new TypeError('maxChunkSize is not a number');
-    }
-    if (typeof options.maxTries !== 'number') {
-        throw new TypeError('maxTries is not a number');
-    }
-    if (typeof options.onAbort !== 'function') {
-        throw new TypeError('onAbort is not a function');
-    }
-    if (typeof options.onComplete !== 'function') {
-        throw new TypeError('onComplete is not a function');
-    }
-    if (typeof options.onCreate !== 'function') {
-        throw new TypeError('onCreate is not a function');
-    }
-    if (typeof options.onError !== 'function') {
-        throw new TypeError('onError is not a function');
-    }
-    if (typeof options.onProgress !== 'function') {
-        throw new TypeError('onProgress is not a function');
-    }
-    if (typeof options.onStart !== 'function') {
-        throw new TypeError('onStart is not a function');
-    }
-    if (typeof options.onStop !== 'function') {
-        throw new TypeError('onStop is not a function');
-    }
-    if (!(options.store instanceof UploadFS.Store)) {
-        throw new TypeError('store is not an UploadFS.Store');
-    }
-
-    // Public attributes
-    self.adaptive = options.adaptive;
-    self.capacity = parseFloat(options.capacity);
-    self.chunkSize = parseInt(options.chunkSize);
-    self.maxChunkSize = parseInt(options.maxChunkSize);
-    self.maxTries = parseInt(options.maxTries);
-    self.onAbort = options.onAbort;
-    self.onComplete = options.onComplete;
-    self.onCreate = options.onCreate;
-    self.onError = options.onError;
-    self.onProgress = options.onProgress;
-    self.onStart = options.onStart;
-    self.onStop = options.onStop;
-
-    // Private attributes
-    var store = options.store;
-    var data = options.data;
-    var capacityMargin = 10; //%
-    var file = options.file;
-    var fileId = null;
-    var offset = 0;
-    var total = options.data.byteLength;
-    var tries = 0;
-
-    var complete = new ReactiveVar(false);
-    var loaded = new ReactiveVar(0);
-    var uploading = new ReactiveVar(false);
-
-    var timeA = null;
-    var timeB = null;
-
-    // Assign file to store
-    file.store = store.getName();
 
     /**
      * Aborts the current transfer
      */
-    self.abort = function () {
-        uploading.set(false);
+    abort(){
+        this.isUploading = false;
 
         // Remove the file from database
         store.getCollection().remove(fileId, function (err) {
             if (err) {
-                console.error('ufs: cannot remove file ' + fileId + ' (' + err.message + ')');
+                console.error(`ufs: cannot remove file ${ fileId } (${ err.message })`);
             } else {
-                fileId = null;
-                offset = 0;
-                tries = 0;
-                loaded.set(0);
-                complete.set(false);
-                self.onAbort(file);
+                this._fileId = null;
+                this._offset = 0;
+                this._tries = 0;
+                this.loaded = 0;
+                this.isComplete = false;
+                this.onAbort(file);
             }
         });
     };
@@ -139,104 +123,115 @@ UploadFS.Uploader = function (options) {
      * Returns the file
      * @return {object}
      */
-    self.getFile = function () {
-        return file;
-    };
+    get file() {
+        return this._file;
+    }
 
     /**
      * Returns the loaded bytes
      * @return {number}
      */
-    self.getLoaded = function () {
-        return loaded.get();
-    };
+    get loaded(){
+        return this._loaded.get();
+    }
 
+    set loaded(loaded){
+        return this._loaded.set(loaded);
+    }
     /**
      * Returns current progress
      * @return {number}
      */
-    self.getProgress = function () {
-        return parseFloat((loaded.get() / total).toFixed(2));
+    get progress() {
+        return parseFloat((this.loaded / this.total).toFixed(2));
     };
 
     /**
      * Returns the total bytes
      * @return {number}
      */
-    self.getTotal = function () {
-        return total;
-    };
+    get total() {
+        return this._total;
+    }
 
     /**
      * Checks if the transfer is complete
      * @return {boolean}
      */
-    self.isComplete = function () {
-        return complete.get();
-    };
+    get isComplete() {
+        return this._complete.get();
+    }
+
+    set isComplete(isComplete){
+        this._complete.set(isComplete);
+    }
 
     /**
      * Checks if the transfer is active
      * @return {boolean}
      */
-    self.isUploading = function () {
-        return uploading.get();
-    };
+    get isUploading() {
+        return this._uploading.get();
+    }
+
+    set isUploading(uploading){
+        this._uploading.set(uploading);
+    }
 
     /**
      * Starts or resumes the transfer
      */
-    self.start = function () {
-        if (!uploading.get() && !complete.get()) {
-            self.onStart(file);
+    start() {
+        if (!this.isUploading && !this.isComplete) {
+            this.onStart(file);
 
-            function upload() {
-                uploading.set(true);
+            const upload = () => {
+                this.isUploading = true;
 
-                var length = self.chunkSize;
+                let length = this.chunkSize;
 
-                function sendChunk() {
-                    if (uploading.get() && !complete.get()) {
+                const sendChunk = () => {
+                    if (this.isUploading && !this.isComplete) {
 
                         // Calculate the chunk size
-                        if (offset + length > total) {
-                            length = total - offset;
+                        if (this._offset + length > this.total) {
+                            length = this.total - this._offset;
                         }
 
-                        if (offset < total) {
+                        if (this._offset < this.total) {
                             // Prepare the chunk
-                            var chunk = new Uint8Array(data, offset, length);
-                            var progress = (offset + length) / total;
+                            const chunk = new Uint8Array(data, this._offset, length);
+                            const progress = (this._offset + length) / this.total;
 
-                            timeA = Date.now();
+                            this.timeA = Date.now();
 
                             // Write the chunk to the store
-                            Meteor.call('ufsWrite', chunk, fileId, store.getName(), progress, function (err, bytes) {
-                                timeB = Date.now();
+                            Meteor.call('ufsWrite', chunk, this._fileId, this._store, progress, (err, bytes) => {
+                                this.timeB = Date.now();
 
                                 if (err || !bytes) {
                                     // Retry until max tries is reach
                                     // But don't retry if these errors occur
-                                    if (tries < self.maxTries && !_.contains([400, 404], err.error)) {
-                                        tries += 1;
+                                    if (this._tries < this.maxTries && !_.contains([400, 404], err.error)) {
+                                        this._tries += 1;
 
                                         // Wait 1 sec before retrying
                                         Meteor.setTimeout(sendChunk, 1000);
 
                                     } else {
-                                        self.abort();
-                                        self.onError(err);
+                                        this.abort();
+                                        this.onError(err);
                                     }
                                 } else {
-                                    offset += bytes;
-                                    loaded.set(loaded.get() + bytes);
+                                    this._offset += bytes;
+                                    this.loaded = this.loaded + bytes;
 
                                     // Use adaptive length
-                                    if (self.adaptive && timeA && timeB && timeB > timeA) {
-                                        var duration = (timeB - timeA) / 1000;
+                                    if (this.adaptive && this.timeA && this.timeB && this.timeB > this.timeA) {
+                                        const duration = (this.timeB - this.timeA) / 1000;
 
-                                        var max = self.capacity * (1 + (capacityMargin / 100));
-                                        var min = self.capacity * (1 - (capacityMargin / 100));
+                                        const max = this.capacity * (1 + (this._capacityMargin / 100));
+                                        const min = this.capacity * (1 - (this._capacityMargin / 100));
 
                                         if (duration >= max) {
                                             length = Math.abs(Math.round(bytes * (max - duration)));
@@ -245,27 +240,26 @@ UploadFS.Uploader = function (options) {
                                             length = Math.round(bytes * (min / duration));
                                         }
                                         // Limit to max chunk size
-                                        if (self.maxChunkSize > 0 && length > self.maxChunkSize) {
-                                            length = self.maxChunkSize;
+                                        if (this.maxChunkSize > 0 && length > this.maxChunkSize) {
+                                            length = this.maxChunkSize;
                                         }
                                     }
-                                    self.onProgress(file, self.getProgress());
+                                    this.onProgress(file, this.progress);
                                     sendChunk();
                                 }
                             });
 
                         } else {
                             // Finish the upload by telling the store the upload is complete
-                            Meteor.call('ufsComplete', fileId, store.getName(), function (err, uploadedFile) {
+                            Meteor.call('ufsComplete', this._fileId, this._store, (err, uploadedFile) => {
                                 if (err) {
-                                    self.abort();
-
+                                    this.abort();
                                 } else if (uploadedFile) {
-                                    uploading.set(false);
-                                    complete.set(true);
-                                    file = uploadedFile;
-                                    self.onProgress(uploadedFile, loaded.get() / progress);
-                                    self.onComplete(uploadedFile);
+                                    this.isUploading = false;
+                                    this.isComplete = true;
+                                    this._file = uploadedFile;
+                                    this.onProgress(uploadedFile, this.loaded / this.progress);
+                                    this.onComplete(uploadedFile);
                                 }
                             });
                         }
@@ -275,91 +269,86 @@ UploadFS.Uploader = function (options) {
                 sendChunk();
             }
 
-            if (!fileId) {
+            if (!this._fileId) {
                 // Insert the file in the collection
-                store.getCollection().insert(file, function (err, uploadId) {
+                store.getCollection().insert(file, (err, uploadId) => {
                     if (err) {
-                        self.onError(err);
+                        this.onError(err);
                     } else {
-                        fileId = uploadId;
-                        file._id = fileId;
-                        self.onCreate(file);
+                        this._fileId = uploadId;
+                        this._file._id = this._fileId;
+                        this.onCreate(file);
                         upload();
                     }
                 });
             } else {
-                store.getCollection().update(fileId, {
+                store.getCollection().update(this._fileId, {
                     $set: {uploading: true}
-                }, function (err, result) {
+                }, (err, result) => {
                     if (!err && result) {
                         upload();
                     }
                 });
             }
         }
-    };
+    }
 
     /**
      * Stops the transfer
      */
-    self.stop = function () {
-        if (uploading.get()) {
-            uploading.set(false);
-            store.getCollection().update(fileId, {
+    stop() {
+        if (this.isUploading) {
+            this.isUploading = false;
+            store.getCollection().update(this._fileId, {
                 $set: {uploading: false}
             });
-            self.onStop(file);
+            this.onStop(file);
         }
-    };
-};
+    }
 
-/**
- * Called when the file upload is aborted
- * @param file
- */
-UploadFS.Uploader.prototype.onAbort = function (file) {
-};
+    /**
+     * Called when the file upload is aborted
+     * @param file
+     */
+    onAbort(file){}
 
-/**
- * Called when the file upload is complete
- * @param file
- */
-UploadFS.Uploader.prototype.onComplete = function (file) {
-};
+    /**
+     * Called when the file upload is complete
+     * @param file
+     */
+    onComplete(file){}
 
-/**
- * Called when the file is created in the collection
- * @param file
- */
-UploadFS.Uploader.prototype.onCreate = function (file) {
-};
+    /**
+     * Called when the file is created in the collection
+     * @param file
+     */
+    onCreate(file){}
 
-/**
- * Called when an error occurs during file upload
- * @param err
- */
-UploadFS.Uploader.prototype.onError = function (err) {
-    console.error(err.message);
-};
+    /**
+     * Called when an error occurs during file upload
+     * @param err
+     */
+    onError(err){
+        console.error(err.message);
+    }
 
-/**
- * Called when a file chunk has been sent
- * @param file
- * @param progress is a float from 0.0 to 1.0
- */
-UploadFS.Uploader.prototype.onProgress = function (file, progress) {
-};
+    /**
+     * Called when a file chunk has been sent
+     * @param file
+     * @param progress is a float from 0.0 to 1.0
+     */
+    onProgress(file, progress){}
 
-/**
- * Called when the file upload starts
- * @param file
- */
-UploadFS.Uploader.prototype.onStart = function (file) {
-};
+    /**
+     * Called when the file upload starts
+     * @param file
+     */
+    onStart(file){}
 
-/**
- * Called when the file upload stops
- * @param file
- */
-UploadFS.Uploader.prototype.onStop = function (file) {
-};
+    /**
+     * Called when the file upload stops
+     * @param file
+     */
+    onStop(file){}
+
+}

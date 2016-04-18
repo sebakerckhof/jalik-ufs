@@ -1,30 +1,30 @@
-domain = Npm.require('domain');
-fs = Npm.require('fs');
-Future = Npm.require('fibers/future');
-http = Npm.require('http');
-https = Npm.require('https');
-mkdirp = Npm.require('mkdirp');
-stream = Npm.require('stream');
-zlib = Npm.require('zlib');
+const domain = Npm.require('domain');
+const fs = Npm.require('fs');
+const Future = Npm.require('fibers/future');
+const http = Npm.require('http');
+const https = Npm.require('https');
+const mkdirp = Npm.require('mkdirp');
+const stream = Npm.require('stream');
+const zlib = Npm.require('zlib');
 
 Meteor.startup(function () {
-    var path = UploadFS.config.tmpDir;
-    var mode = '0744';
+    const path = UploadFS.config.tmpDir;
+    const mode = '0744';
 
     fs.stat(path, function (err) {
         if (err) {
             // Create the temp directory
             mkdirp(path, {mode: mode}, function (err) {
                 if (err) {
-                    console.error('ufs: cannot create temp directory at ' + path + ' (' + err.message + ')');
+                    console.error(`ufs: cannot create temp directory at ${ path } (${ err.message })`);
                 } else {
-                    console.log('ufs: temp directory created at ' + path);
+                    console.log(`ufs: temp directory created at ${ path }`);
                 }
             });
         } else {
             // Set directory permissions
             fs.chmod(path, mode, function (err) {
-                err && console.error('ufs: cannot set temp directory permissions ' + mode + ' (' + err.message + ')');
+                err && console.error(`ufs: cannot set temp directory permissions ${ mode } (${ err.message })`);
             });
         }
     });
@@ -35,11 +35,12 @@ Meteor.startup(function () {
 var d = domain.create();
 
 d.on('error', function (err) {
-    console.error('ufs: ' + err.message);
+    console.error(`ufs: ${ err.messsage }`);
 });
 
 // Listen HTTP requests to serve files
 WebApp.connectHandlers.use(function (req, res, next) {
+    
     // Quick check to see if request should be catch
     if (req.url.indexOf(UploadFS.config.storesPath) === -1) {
         next();
@@ -47,16 +48,16 @@ WebApp.connectHandlers.use(function (req, res, next) {
     }
 
     // Remove store path
-    var path = req.url.substr(UploadFS.config.storesPath.length + 1);
+    const path = req.url.substr(UploadFS.config.storesPath.length + 1);
 
     // Get store, file Id and file name
-    var regExp = new RegExp('^\/([^\/]+)\/([^\/]+)(?:\/([^\/]+))?$');
-    var match = regExp.exec(path);
+    const regExp = new RegExp('^\/([^\/]+)\/([^\/]+)(?:\/([^\/]+))?$');
+    const match = regExp.exec(path);
 
     if (match !== null) {
         // Get store
-        var storeName = match[1];
-        var store = UploadFS.getStore(storeName);
+        const storeName = match[1];
+        const store = UploadFS.getStore(storeName);
 
         if (!store) {
             res.writeHead(404);
@@ -65,18 +66,18 @@ WebApp.connectHandlers.use(function (req, res, next) {
         }
 
         if (typeof store.onRead !== 'function') {
-            console.error('ufs: store "' + storeName + '" onRead is not a function');
+            console.error(`ufs: store "${ storeName }" onRead is not a function`);
             res.writeHead(500);
             res.end();
             return;
         }
 
         // Remove file extension from file Id
-        var index = match[2].indexOf('.');
-        var fileId = index !== -1 ? match[2].substr(0, index) : match[2];
+        const index = match[2].indexOf('.');
+        const fileId = index !== -1 ? match[2].substr(0, index) : match[2];
 
         // Get file from database
-        var file = store.getCollection().findOne(fileId);
+        const file = store.getCollection().findOne(fileId);
         if (!file) {
             res.writeHead(404);
             res.end();

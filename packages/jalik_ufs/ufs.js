@@ -1,33 +1,44 @@
-var stores = {};
+const stores = {};
 
 UploadFS = {
     /**
      * Contains all stores
      */
     store: {},
+
     /**
      * Returns the temporary file path
      * @param fileId
      * @return {string}
      */
-    getTempFilePath: function (fileId) {
-        return UploadFS.config.tmpDir + '/' + fileId;
+    getTempFilePath(fileId) {
+        return `${ UploadFS.config.tmpDir }/${ fileId }`;
     },
+
     /**
      * Returns the store by its name
      * @param name
      * @return {UploadFS.Store}
      */
-    getStore: function (name) {
+    getStore(name) {
         return stores[name];
     },
+
+    addStore(store){
+        if (UploadFS.getStore(store.name)) {
+            throw new TypeError(`ufs: Duplicate store: ${ store.name }`);
+        }
+        stores[store.name] = store
+    },
+
     /**
      * Returns all stores
      * @return {object}
      */
-    getStores: function () {
+    get stores() {
         return stores;
     },
+
     /**
      * Imports a file from a URL
      * @param url
@@ -35,7 +46,7 @@ UploadFS = {
      * @param store
      * @param callback
      */
-    importFromURL: function (url, file, store, callback) {
+    importFromURL(url, file, store, callback) {
         Meteor.call('ufsImportURL', url, file, store && store.getName(), callback);
     }
 };

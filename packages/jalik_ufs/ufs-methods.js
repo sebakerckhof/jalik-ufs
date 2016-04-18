@@ -5,7 +5,7 @@ Meteor.methods({
      * @param fileId
      * @param storeName
      */
-    ufsComplete: function (fileId, storeName) {
+    'ufsComplete': function (fileId, storeName) {
         check(fileId, String);
         check(storeName, String);
 
@@ -14,11 +14,11 @@ Meteor.methods({
 
         var store = UploadFS.getStore(storeName);
         if (!store) {
-            throw new Meteor.Error(404, 'store "' + storeName + '" does not exist');
+            throw new Meteor.Error(404, `store "${ storeName }" does not exist`);
         }
         // Check that file exists and is owned by current user
         if (store.getCollection().find({_id: fileId, userId: this.userId}).count() < 1) {
-            throw new Meteor.Error(404, 'file "' + fileId + '" does not exist');
+            throw new Meteor.Error(404, `file "${ fileId }" does not exist`);
         }
 
         var fut = new Future();
@@ -38,7 +38,7 @@ Meteor.methods({
         // Save file in the store
         store.write(rs, fileId, Meteor.bindEnvironment(function (err, file) {
             fs.unlink(tmpFile, function (err) {
-                err && console.error('ufs: cannot delete temp file ' + tmpFile + ' (' + err.message + ')');
+                err && console.error(`ufs: cannot delete temp file ${ tmpFile } (${ err.message })`);
             });
 
             if (err) {
@@ -57,7 +57,7 @@ Meteor.methods({
      * @param storeName
      * @return {*}
      */
-    ufsImportURL: function (url, file, storeName) {
+    'ufsImportURL': function (url, file, storeName) {
         check(url, String);
         check(file, Object);
         check(storeName, String);
@@ -66,7 +66,7 @@ Meteor.methods({
 
         var store = UploadFS.getStore(storeName);
         if (!store) {
-            throw new Meteor.Error(404, 'Store "' + storeName + '" does not exist');
+            throw new Meteor.Error(404, `Store "${ storeName }" does not exist`);
         }
 
         try {
@@ -87,8 +87,8 @@ Meteor.methods({
             throw new Meteor.Error(500, err.message);
         }
 
-        var fut = new Future();
-        var proto;
+        const fut = new Future();
+        let proto;
 
         // Detect protocol to use
         if (/http:\/\//i.test(url)) {
@@ -121,7 +121,7 @@ Meteor.methods({
      * @param progress
      * @return {*}
      */
-    ufsWrite: function (chunk, fileId, storeName, progress) {
+    'ufsWrite': function (chunk, fileId, storeName, progress) {
         check(fileId, String);
         check(storeName, String);
         check(progress, Number);
@@ -136,14 +136,14 @@ Meteor.methods({
             throw new Meteor.Error(400, 'chunk is empty');
         }
 
-        var store = UploadFS.getStore(storeName);
+        const store = UploadFS.getStore(storeName);
         if (!store) {
-            throw new Meteor.Error(404, 'store ' + storeName + ' does not exist');
+            throw new Meteor.Error(404, `store ${ storeName } does not exist`);
         }
 
         // Check that file exists, is not complete and is owned by current user
-        if (store.getCollection().find({_id: fileId, complete: false, userId: this.userId}).count() < 1) {
-            throw new Meteor.Error(404, 'file ' + fileId + ' does not exist');
+        if (store.collection.find({_id: fileId, complete: false, userId: this.userId}).count() < 1) {
+            throw new Meteor.Error(404, `file ${ fileId } does not exist`);
         }
 
         var fut = new Future();
@@ -152,14 +152,14 @@ Meteor.methods({
         // Save the chunk
         fs.appendFile(tmpFile, new Buffer(chunk), Meteor.bindEnvironment(function (err) {
             if (err) {
-                console.error('ufs: cannot write chunk of file "' + fileId + '" (' + err.message + ')');
+                console.error(`ufs: cannot write chunk of file "${ fileId }" (${ err.message })`);
                 fs.unlink(tmpFile, function (err) {
-                    err && console.error('ufs: cannot delete temp file ' + tmpFile + ' (' + err.message + ')');
+                    err && console.error(`ufs: cannot delete temp file ${ tmpFile } (${ err.message })`);
                 });
                 fut.throw(err);
             } else {
                 // Update completed state
-                store.getCollection().update(fileId, {
+                store.collection.update(fileId, {
                     $set: {progress: progress}
                 });
                 fut.return(chunk.length);
