@@ -1,6 +1,6 @@
 Package.describe({
     name: 'jalik:ufs',
-    version: '0.5.4',
+    version: '0.6.0',
     author: 'karl.stein.pro@gmail.com',
     summary: 'Base package for UploadFS',
     homepage: 'https://github.com/jalik/jalik-ufs',
@@ -14,7 +14,6 @@ Package.onUse(function (api) {
     api.use('matb33:collection-hooks@0.7.13');
     api.use('mongo');
     api.use('reactive-var', 'client');
-    api.use('templating', 'client');
     api.use('underscore');
     api.use('webapp', 'server');
 
@@ -22,7 +21,6 @@ Package.onUse(function (api) {
     api.addFiles('ufs-config.js');
     api.addFiles('ufs-filter.js');
     api.addFiles('ufs-store.js');
-    api.addFiles('ufs-helpers.js', 'client');
     api.addFiles('ufs-uploader.js', 'client');
     api.addFiles('ufs-methods.js', 'server');
     api.addFiles('ufs-server.js', 'server');

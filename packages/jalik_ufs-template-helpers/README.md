@@ -470,8 +470,7 @@ Template.photos.helpers({
 
 ## Template helpers
 
-You can add Blaze template helpers by installing `jalik:ufs-template-helpers`.
-This adds following helpers:
+Some helpers are available by default to help you work with files inside templates.
 
 ```html
 {{#if isAudio}}
